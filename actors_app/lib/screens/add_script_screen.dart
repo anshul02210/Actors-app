@@ -1,9 +1,151 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:archive/archive.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import '../widgets/background_pattern.dart';
+import 'rehearsal_screen.dart';
+import '../services/app_state.dart';
+import '../services/script_service.dart';
 import 'dart:ui';
 
-class AddScriptScreen extends StatelessWidget {
+class AddScriptScreen extends StatefulWidget {
   const AddScriptScreen({super.key});
+
+  @override
+  State<AddScriptScreen> createState() => _AddScriptScreenState();
+}
+
+class _AddScriptScreenState extends State<AddScriptScreen> {
+  final _titleController = TextEditingController();
+  final _scriptTextController = TextEditingController();
+  
+  List<String> _detectedCharacters = [];
+  String? _selectedCharacter;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _scriptTextController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'txt', 'docx'],
+        withData: true,
+      );
+
+      if (result != null) {
+        setState(() {
+          _isLoading = true;
+          // Set title as the filename automatically without the extension
+          _titleController.text = result.files.single.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+        });
+
+        String rawText = '';
+        final fileBytes = result.files.single.bytes;
+        final path = result.files.single.path;
+        final extension = result.files.single.extension?.toLowerCase();
+
+        Uint8List? fileData = fileBytes;
+        if (fileData == null && path != null) {
+          fileData = await File(path).readAsBytes();
+        }
+
+        if (fileData != null) {
+          if (extension == 'pdf') {
+             rawText = await _extractPdfText(fileData);
+          } else if (extension == 'txt') {
+             rawText = utf8.decode(fileData);
+          } else if (extension == 'docx') {
+             rawText = await _extractDocxText(fileData);
+          }
+        }
+
+        setState(() {
+          _scriptTextController.text = rawText;
+          _extractCharacters(rawText);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error analyzing file: $e'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<String> _extractPdfText(Uint8List bytes) async {
+    // Uses syncfusion_flutter_pdf
+    PdfDocument document = PdfDocument(inputBytes: bytes);
+    String text = PdfTextExtractor(document).extractText();
+    document.dispose();
+    return text;
+  }
+
+  Future<String> _extractDocxText(Uint8List bytes) async {
+    // A DOCX is a zip file. We use the archive package to extract word/document.xml
+    Archive archive = ZipDecoder().decodeBytes(bytes);
+    String rawXml = '';
+    for (var file in archive) {
+      if (file.name == 'word/document.xml') {
+        final content = file.content as List<int>;
+        rawXml = utf8.decode(content);
+        break;
+      }
+    }
+    
+    // Strip XML tags using simple regex to recover just the plain text format
+    final RegExp exp = RegExp(r'<[^>]*>', multiLine: true);
+    String plainText = rawXml.replaceAll(exp, ' ');
+    // Remove extra spaces
+    return plainText.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  void _extractCharacters(String text) {
+     // Look for ALL CAPS words followed by a colon. 
+     // Example: "HAMLET:", "MR. SMITH:", "JULIET:"
+     final RegExp characterRegex = RegExp(r'^([A-Z\s\.]+)[\w\s]*:', multiLine: true);
+     
+     final Iterable<RegExpMatch> matches = characterRegex.allMatches(text);
+     Set<String> characters = {};
+     
+     for (final match in matches) {
+       String charName = match.group(1)?.trim() ?? '';
+       // Only keep realistic names
+       if (charName.length > 1 && charName.length < 30) {
+          characters.add(charName);
+       }
+     }
+     
+     // Specific fallback if they just paste standard script formatting without colons (e.g. Character name on its own line)
+     // Finding those securely via regex is harder, so standard "NAME:" is most reliable.
+
+     setState(() {
+        _detectedCharacters = characters.toList()..sort();
+        // Clear selection if the chosen character disappears
+        if (_selectedCharacter != null && !_detectedCharacters.contains(_selectedCharacter)) {
+          _selectedCharacter = null;
+        }
+     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Re-detect characters if they manually paste or type into the box!
+    _scriptTextController.addListener(() {
+      // Debounce this in a real app, but for now we'll do it instantly
+      _extractCharacters(_scriptTextController.text);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,36 +193,43 @@ class AddScriptScreen extends StatelessWidget {
                   const SizedBox(height: 32),
                   
                   // Import File Box
-                  CustomPaint(
-                    painter: _DashedRectPainter(color: Colors.white.withOpacity(0.3)),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.03),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.folder, color: Color(0xFFFFC107), size: 48),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Import file',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '.txt · .pdf · .docx supported',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                  GestureDetector(
+                    onTap: _isLoading ? null : _pickFile,
+                    child: CustomPaint(
+                      painter: _DashedRectPainter(color: _isLoading ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.3)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.03),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_isLoading)
+                              const CircularProgressIndicator(color: Color(0xFFFFC107))
+                            else ...[
+                              const Icon(Icons.folder, color: Color(0xFFFFC107), size: 48),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Import file',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '.txt · .pdf · .docx supported',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ]
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -111,9 +260,11 @@ class AddScriptScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
-                    initialValue: 'Hamlet Act II',
+                    controller: _titleController,
                     style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
+                      hintText: 'e.g. Hamlet Act II',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.04),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -135,16 +286,28 @@ class AddScriptScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   
                   // PASTE SCRIPT TEXT
-                  const Text(
-                    'PASTE SCRIPT TEXT',
-                    style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'SCRIPT TEXT', // renamed slightly to fit dynamic nature
+                        style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      if (_scriptTextController.text.isNotEmpty)
+                         Text(
+                          '${_scriptTextController.text.length} characters',
+                          style: TextStyle(color: Colors.white54, fontSize: 10),
+                         )
+                    ],
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
-                    initialValue: 'HAMLET: To be or not to be, that is the question.\nHORATIO: That is the question indeed.\nHAMLET: Whether \'tis nobler in the mind to suffer...',
-                    maxLines: 6,
+                    controller: _scriptTextController,
+                    maxLines: 8,
                     style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
                     decoration: InputDecoration(
+                      hintText: 'Paste script text here... \nExample:\nHAMLET: To be or not to be...',
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.04),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -166,26 +329,49 @@ class AddScriptScreen extends StatelessWidget {
                   const SizedBox(height: 24),
                   
                   // DETECTED CHARACTERS
-                  const Text(
-                    'DETECTED CHARACTERS',
-                    style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _buildCharacterPill('HAMLET'),
-                      _buildCharacterPill('HORATIO'),
-                      _buildCharacterPill('OPHELIA'),
-                    ],
-                  ),
+                  if (_detectedCharacters.isNotEmpty) ...[
+                    const Text(
+                      'DETECTED CHARACTERS',
+                      style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: _detectedCharacters.map((c) => _buildCharacterPill(c)).toList(),
+                    ),
+                  ],
                   
                   const SizedBox(height: 40),
                   
                   // Continue Button
                   OutlinedButton(
-                    onPressed: () {},
+                    onPressed: (_selectedCharacter == null || _titleController.text.isEmpty) ? null : () {
+                      bool exists = AppState.uploadedScripts.any((s) => s['title'] == _titleController.text);
+                      if (!exists) {
+                        AppState.uploadedScripts.add({
+                          'title': _titleController.text,
+                          'subtitle': '${_detectedCharacters.length} active roles detected',
+                        });
+                        // Fire and forget save to Firestore
+                        ScriptService.saveScript(
+                           _titleController.text, 
+                           '${_detectedCharacters.length} active roles detected', 
+                           _scriptTextController.text
+                        );
+                      }
+                      
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RehearsalScreen(
+                            scriptTitle: _titleController.text,
+                            fullText: _scriptTextController.text,
+                            selectedCharacter: _selectedCharacter!,
+                          ),
+                        ),
+                      );
+                    },
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.white.withOpacity(0.03),
@@ -202,7 +388,7 @@ class AddScriptScreen extends StatelessWidget {
                           style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         SizedBox(width: 8),
-                        Icon(Icons.arrow_forward, color: Colors.white, size: 16),
+                         Icon(Icons.arrow_forward, color: Colors.white, size: 16),
                       ],
                     ),
                   ),
@@ -217,19 +403,29 @@ class AddScriptScreen extends StatelessWidget {
   }
 
   Widget _buildCharacterPill(String name) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.5)),
-      ),
-      child: Text(
-        name,
-        style: const TextStyle(
-          color: Color(0xFFFFC107),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
+    final isSelected = _selectedCharacter == name;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedCharacter = name;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFFC107) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.5)),
+        ),
+        child: Text(
+          name,
+          style: TextStyle(
+            color: isSelected ? Colors.black : const Color(0xFFFFC107),
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );

@@ -14,7 +14,11 @@ class BackgroundPattern extends StatelessWidget {
           top: 60,
           child: Transform.rotate(
             angle: -0.1,
-            child: _buildGenreCard('WESTERN', color: const Color(0xFF1E2A24).withOpacity(0.4), textColor: Colors.cyan.shade600),
+            child: _buildGenreCard(
+              'WESTERN',
+              color: const Color(0xFF1E2A24).withOpacity(0.4),
+              textColor: Colors.cyan.shade600,
+            ),
           ),
         ),
         // Top Center (Action)
@@ -23,7 +27,11 @@ class BackgroundPattern extends StatelessWidget {
           top: -20,
           child: Transform.rotate(
             angle: 0.05,
-            child: _buildGenreCard('ACTION', color: const Color(0xFF1B202A).withOpacity(0.5), textColor: Colors.cyan.shade500),
+            child: _buildGenreCard(
+              'ACTION',
+              color: const Color(0xFF1B202A).withOpacity(0.5),
+              textColor: Colors.cyan.shade500,
+            ),
           ),
         ),
         // Middle Right (DRA)
@@ -32,7 +40,11 @@ class BackgroundPattern extends StatelessWidget {
           top: 80,
           child: Transform.rotate(
             angle: 0.15,
-            child: _buildGenreCard('DRA', color: const Color(0xFF331414).withOpacity(0.5), textColor: Colors.red.shade600),
+            child: _buildGenreCard(
+              'DRA',
+              color: const Color(0xFF331414).withOpacity(0.5),
+              textColor: Colors.red.shade600,
+            ),
           ),
         ),
         // Center Left (MUS)
@@ -41,7 +53,12 @@ class BackgroundPattern extends StatelessWidget {
           top: 250,
           child: Transform.rotate(
             angle: 0.05,
-            child: _buildGenreCard('MUS', color: const Color(0xFF231033).withOpacity(0.4), textColor: Colors.purple.shade500, isCircle: true),
+            child: _buildGenreCard(
+              'MUS',
+              color: const Color(0xFF231033).withOpacity(0.4),
+              textColor: Colors.purple.shade500,
+              isCircle: true,
+            ),
           ),
         ),
         // Center Right (CRIME)
@@ -50,7 +67,11 @@ class BackgroundPattern extends StatelessWidget {
           top: 280,
           child: Transform.rotate(
             angle: -0.1,
-            child: _buildGenreCard('CRIME', color: const Color(0xFF1A1F2B).withOpacity(0.4), textColor: Colors.grey.shade500),
+            child: _buildGenreCard(
+              'CRIME',
+              color: const Color(0xFF1A1F2B).withOpacity(0.4),
+              textColor: Colors.grey.shade500,
+            ),
           ),
         ),
         // Center Bottom (COMEDY)
@@ -59,7 +80,11 @@ class BackgroundPattern extends StatelessWidget {
           top: 360,
           child: Transform.rotate(
             angle: -0.05,
-            child: _buildGenreCard('COMEDY', color: const Color(0xFF2A2B1A).withOpacity(0.3), textColor: Colors.cyan.shade600),
+            child: _buildGenreCard(
+              'COMEDY',
+              color: const Color(0xFF2A2B1A).withOpacity(0.3),
+              textColor: Colors.cyan.shade600,
+            ),
           ),
         ),
         // Center Center (COM)
@@ -68,7 +93,12 @@ class BackgroundPattern extends StatelessWidget {
           top: 220,
           child: Transform.rotate(
             angle: -0.05,
-            child: _buildGenreCard('COM', color: const Color(0xFF2A2B1A).withOpacity(0.3), textColor: Colors.yellow.shade600, isCircle: true),
+            child: _buildGenreCard(
+              'COM',
+              color: const Color(0xFF2A2B1A).withOpacity(0.3),
+              textColor: Colors.yellow.shade600,
+              isCircle: true,
+            ),
           ),
         ),
         // Bottom Right (HORROR)
@@ -77,7 +107,11 @@ class BackgroundPattern extends StatelessWidget {
           bottom: 250,
           child: Transform.rotate(
             angle: 0.0,
-            child: _buildGenreCard('HORROR', color: const Color(0xFF151515).withOpacity(0.5), textColor: Colors.amber.shade700),
+            child: _buildGenreCard(
+              'HORROR',
+              color: const Color(0xFF151515).withOpacity(0.5),
+              textColor: Colors.amber.shade700,
+            ),
           ),
         ),
         // Bottom Left (FAN)
@@ -86,7 +120,12 @@ class BackgroundPattern extends StatelessWidget {
           bottom: 150,
           child: Transform.rotate(
             angle: 0.05,
-            child: _buildGenreCard('FAN', color: const Color(0xFF162B1F).withOpacity(0.4), textColor: Colors.green.shade500, isCircle: true),
+            child: _buildGenreCard(
+              'FAN',
+              color: const Color(0xFF162B1F).withOpacity(0.4),
+              textColor: Colors.green.shade500,
+              isCircle: true,
+            ),
           ),
         ),
         // Bottom Center (MYSTERY)
@@ -95,7 +134,11 @@ class BackgroundPattern extends StatelessWidget {
           bottom: 50,
           child: Transform.rotate(
             angle: -0.05,
-            child: _buildGenreCard('MYSTERY', color: const Color(0xFF1A1A2B).withOpacity(0.4), textColor: Colors.indigo.shade500),
+            child: _buildGenreCard(
+              'MYSTERY',
+              color: const Color(0xFF1A1A2B).withOpacity(0.4),
+              textColor: Colors.indigo.shade500,
+            ),
           ),
         ),
         // Very Bottom Right (MYS)
@@ -104,14 +147,23 @@ class BackgroundPattern extends StatelessWidget {
           bottom: 120,
           child: Transform.rotate(
             angle: -0.02,
-            child: _buildGenreCard('MYS', color: const Color(0xFF1A1A2B).withOpacity(0.3), textColor: Colors.purple.shade600),
+            child: _buildGenreCard(
+              'MYS',
+              color: const Color(0xFF1A1A2B).withOpacity(0.3),
+              textColor: Colors.purple.shade600,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildGenreCard(String title, {required Color color, required Color textColor, bool isCircle = false}) {
+  Widget _buildGenreCard(
+    String title, {
+    required Color color,
+    required Color textColor,
+    bool isCircle = false,
+  }) {
     return Opacity(
       opacity: 0.6,
       child: Column(
@@ -125,7 +177,9 @@ class BackgroundPattern extends StatelessWidget {
                 width: 8,
                 height: 8,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
-                color: Colors.white.withOpacity(0.15), // slightly more visible film strip
+                color: Colors.white.withOpacity(
+                  0.15,
+                ), // slightly more visible film strip
               ),
             ),
           ),
