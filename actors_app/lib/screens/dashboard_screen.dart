@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/background_pattern.dart';
-import 'progress_tab.dart'; // import the new tab
+import 'progress_tab.dart'; 
+import '../services/auth_service.dart';
+import '../services/app_state.dart';
+import '../services/script_service.dart';
+import 'rehearsal_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -41,24 +46,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFB5702A), 
-                    width: 1.5,
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'logout') {
+                    await AuthService().signOut();
+                    // Firebase state will automatically pop them to WelcomeScreen 
+                    // thanks to StreamBuilder in main.dart
+                  }
+                },
+                offset: const Offset(0, 50),
+                color: const Color(0xFF1B1D22),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: Colors.white70, size: 20),
+                        SizedBox(width: 8),
+                        Text('Sign Out', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
                   ),
-                  color: const Color(0xFF231A15),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  'AK',
-                  style: TextStyle(
-                    color: Color(0xFFFFC107),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                ],
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFB5702A), 
+                      width: 1.5,
+                    ),
+                    color: const Color(0xFF231A15),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'AK',
+                    style: TextStyle(
+                      color: Color(0xFFFFC107),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
               ),
@@ -85,114 +113,105 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 40),
           
           // Continue Rehearsing Section
-          const Text(
-            'CONTINUE REHEARSING',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
+          if (AppState.recentScriptTitle != null) ...[
+            const Text(
+              'RECENTLY PRACTICED',
+              style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
             ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Progress Card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Hamlet',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFFFC107).withOpacity(0.4),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          AppState.recentScriptTitle!,
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      child: const Text(
-                        'In progress',
-                        style: TextStyle(
-                          color: Color(0xFFFFC107),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          '${(AppState.recentAccuracy! * 100).toInt()}% Score',
+                          style: const TextStyle(color: Color(0xFFFFC107), fontSize: 12, fontWeight: FontWeight.w500),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Playing: Hamlet · Act II, Scene 2',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 14,
+                    ],
                   ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Progress Bar
-                Stack(
-                  children: [
-                    Container(
-                      height: 4,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(2),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Role played: ${AppState.recentRole}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Practiced ${AppState.recentTotalLines} lines',
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
                       ),
-                    ),
-                    Container(
-                      height: 4,
-                      width: 200, 
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFC107),
-                        borderRadius: BorderRadius.circular(2),
+                      Row(
+                        children: [
+                          const Text(
+                            'Completed',
+                            style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 16),
+                          GestureDetector(
+                            onTap: () {
+                              if (AppState.recentFullText != null) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => RehearsalScreen(
+                                      scriptTitle: AppState.recentScriptTitle!,
+                                      fullText: AppState.recentFullText!,
+                                      selectedCharacter: AppState.recentRole!,
+                                    ),
+                                  ),
+                                ).then((_) => setState(() {}));
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFC107).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.3)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.replay, color: Color(0xFFFFC107), size: 14),
+                                  SizedBox(width: 6),
+                                  Text('Repractice', style: TextStyle(color: Color(0xFFFFC107), fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '62% complete',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 12,
-                      ),
-                    ),
-                    Text(
-                      'Scene 5 of 8',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 40),
+            const SizedBox(height: 40),
+          ],
           
           // My Scripts Section
           Row(
@@ -209,8 +228,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               GestureDetector(
                 onTap: () {
-                  // Navigate to the "Add Script" screen
-                  Navigator.pushNamed(context, '/add_script');
+                  // Navigate to the "Add Script" screen and powerfully refresh the Dashboard when popped back!
+                  Navigator.pushNamed(context, '/add_script').then((_) => setState(() {}));
                 },
                 child: const Text(
                   '+ Add new',
@@ -226,21 +245,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 16),
           
           // Scripts List
-          _buildScriptCard(
-            title: 'Romeo & Juliet',
-            subtitle: '2 chars · 5 scenes',
-            icon: Icons.theater_comedy,
-            iconColor: Colors.blueAccent.shade200,
-            iconColor2: Colors.orangeAccent.shade200,
+          StreamBuilder<QuerySnapshot>(
+            stream: ScriptService.getUserScripts(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFFFFC107)));
+              }
+              
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return _buildScriptCard(
+                   title: 'Romeo & Juliet (Sample)',
+                   subtitle: '2 chars · 5 scenes',
+                   icon: Icons.theater_comedy,
+                   iconColor: Colors.blueAccent.shade200,
+                   iconColor2: Colors.orangeAccent.shade200,
+                );
+              }
+
+              return Column(
+                children: snapshot.data!.docs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: _buildScriptCard(
+                      title: data['title'] ?? 'Unknown',
+                      subtitle: data['subtitle'] ?? '0 chars',
+                      icon: Icons.description,
+                      iconColor: const Color(0xFFFFC107).withOpacity(0.5),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
           ),
-          const SizedBox(height: 12),
-          _buildScriptCard(
-            title: 'Death of a Salesman',
-            subtitle: '3 chars · Not started',
-            icon: Icons.description,
-            iconColor: Colors.purple.shade200,
-          ),
-          const SizedBox(height: 12),
         ],
       ),
     );
