@@ -32,7 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _passwordController.text,
         );
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/dashboard');
+          // Let the root auth-state listener decide which screen to show.
+          Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
         if (mounted) {
@@ -68,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: InkWell(
+                      mouseCursor: SystemMouseCursors.click,
                       onTap: () => Navigator.pop(context),
                       borderRadius: BorderRadius.circular(24),
                       child: Container(
@@ -145,16 +147,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           // Forgot Password
                           Align(
                             alignment: Alignment.centerRight,
-                            child: GestureDetector(
-                              onTap: () {
-                                // Handle forgot password logicy
-                              },
-                              child: const Text(
-                                'Forgot password?',
-                                style: TextStyle(
-                                  color: Color(0xFFFFC107),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () {
+                                  // Handle forgot password logicy
+                                },
+                                child: const Text(
+                                  'Forgot password?',
+                                  style: TextStyle(
+                                    color: Color(0xFFFFC107),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
@@ -162,26 +167,29 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 24),
                           
                           // Sign in Button
-                          OutlinedButton(
-                            onPressed: _isLoading ? null : _handleLogin,
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              backgroundColor: Colors.white.withOpacity(0.03),
-                              side: BorderSide(color: Colors.white.withOpacity(0.1)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: OutlinedButton(
+                              onPressed: _isLoading ? null : _handleLogin,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                backgroundColor: Colors.white.withOpacity(0.03),
+                                side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                            ),
-                            child: _isLoading 
-                                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text(
-                                    'Sign in',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                              child: _isLoading 
+                                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : const Text(
+                                      'Sign in',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                  ),
+                            ),
                           ),
                         ],
                       ),
@@ -197,23 +205,26 @@ class _LoginScreenState extends State<LoginScreen> {
                         'New here? ',
                         style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
                       ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushReplacementNamed(context, '/register');
-                        },
-                        child: const Row(
-                          children: [
-                            Text(
-                              'Create an account',
-                              style: TextStyle(
-                                color: Color(0xFFFFC107),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pushReplacementNamed(context, '/register');
+                          },
+                          child: const Row(
+                            children: [
+                              Text(
+                                'Create an account',
+                                style: TextStyle(
+                                  color: Color(0xFFFFC107),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_forward, color: Color(0xFFFFC107), size: 16),
-                          ],
+                              SizedBox(width: 4),
+                              Icon(Icons.arrow_forward, color: Color(0xFFFFC107), size: 16),
+                            ],
+                          ),
                         ),
                       ),
                     ],

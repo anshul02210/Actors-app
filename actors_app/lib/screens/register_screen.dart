@@ -53,7 +53,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           lastName: _lastNameController.text.trim(),
         );
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/dashboard');
+          // Let the root auth-state listener decide which screen to show.
+          Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
         if (mounted) {
@@ -93,6 +94,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     children: [
                       // Back Button
                       InkWell(
+                        mouseCursor: SystemMouseCursors.click,
                         onTap: () => Navigator.pop(context),
                         borderRadius: BorderRadius.circular(24),
                         child: Container(
@@ -237,33 +239,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 32),
                   
                   // Continue Button
-                  OutlinedButton(
-                    onPressed: _isLoading ? null : _handleRegister,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.transparent,
-                      side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: OutlinedButton(
+                      onPressed: _isLoading ? null : _handleRegister,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.transparent,
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: _isLoading 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Continue',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                      child: _isLoading 
+                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Continue',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
-                            ],
-                          ),
+                                SizedBox(width: 8),
+                                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                              ],
+                            ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   
@@ -275,16 +280,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         'Already have an account? ',
                         style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
                       ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushNamed(context, '/login');
-                        },
-                        child: const Text(
-                          'Sign in',
-                          style: TextStyle(
-                            color: Color(0xFFFFC107), // Gold accent color
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pushNamed(context, '/login');
+                          },
+                          child: const Text(
+                            'Sign in',
+                            style: TextStyle(
+                              color: Color(0xFFFFC107), // Gold accent color
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
