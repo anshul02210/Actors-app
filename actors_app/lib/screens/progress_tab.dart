@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+import '../services/script_service.dart';
 
 class ProgressTab extends StatelessWidget {
   const ProgressTab({super.key});
@@ -21,126 +26,235 @@ class ProgressTab extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Your rehearsal history',
+            'Live rehearsal performance from your saved sessions',
             style: TextStyle(
               color: Colors.white.withOpacity(0.5),
               fontSize: 14,
             ),
           ),
           const SizedBox(height: 24),
-          
-          // Accuracy over time
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Accuracy over time', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    Text('Last 7 sessions', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                // Simple mock of a line chart using CustomPaint
-                SizedBox(
-                  height: 100,
-                  width: double.infinity,
-                  child: CustomPaint(
-                    painter: _SimpleLineChartPainter(),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: ScriptService.getUserSessions(limit: 60),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 32),
+                    child: CircularProgressIndicator(color: Color(0xFFFFC107)),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Feb 10', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
-                    Text('Today', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
-                  ],
-                ),
-              ],
-            ),
+                );
+              }
+
+              final sessions = snapshot.data?.docs ?? const [];
+              if (sessions.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.insights_outlined, color: Colors.white70, size: 36),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'No session history yet',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Complete a rehearsal to start seeing your progress trends.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final accuracies = sessions
+                  .take(7)
+                  .map((doc) => ((doc.data()['accuracy'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0))
+                  .toList()
+                  .reversed
+                  .toList();
+
+              final averageAccuracy =
+                  sessions.map((doc) => ((doc.data()['accuracy'] as num?)?.toDouble() ?? 0.0)).fold<double>(0, (a, b) => a + b) /
+                      math.max(1, sessions.length);
+
+              final Map<String, List<double>> byScript = <String, List<double>>{};
+              for (final doc in sessions) {
+                final data = doc.data();
+                final title = (data['scriptTitle'] as String?)?.trim();
+                if (title == null || title.isEmpty) {
+                  continue;
+                }
+                byScript.putIfAbsent(title, () => <double>[]).add(((data['accuracy'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0));
+              }
+
+              final scriptRows = byScript.entries.map((entry) {
+                final avg = entry.value.fold<double>(0, (a, b) => a + b) / math.max(1, entry.value.length);
+                return _ScriptProgress(
+                  title: entry.key,
+                  averageAccuracy: avg,
+                  sessions: entry.value.length,
+                );
+              }).toList()
+                ..sort((a, b) => b.averageAccuracy.compareTo(a.averageAccuracy));
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Accuracy trend', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            Text(
+                              '${(averageAccuracy * 100).toStringAsFixed(0)}% avg',
+                              style: const TextStyle(
+                                color: Color(0xFFFFC107),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          height: 110,
+                          width: double.infinity,
+                          child: CustomPaint(
+                            painter: _SessionLineChartPainter(values: accuracies),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Oldest', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
+                            Text('Newest', style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 10)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  const Text(
+                    'By script',
+                    style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 16),
+                  ...scriptRows.map(_buildScriptProgressCard),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Recent sessions',
+                    style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Column(
+                      children: sessions.take(8).toList().asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final data = entry.value.data();
+                        final title = (data['scriptTitle'] as String?) ?? 'Untitled Script';
+                        final role = (data['role'] as String?) ?? 'Role';
+                        final score = (((data['accuracy'] as num?)?.toDouble() ?? 0.0) * 100).toStringAsFixed(0);
+                        final durationSeconds = (data['durationSeconds'] as num?)?.toInt() ?? 0;
+                        final durationMins = math.max(1, (durationSeconds / 60).round());
+
+                        final row = _buildRecentSessionRow(
+                          '$title - $role',
+                          '$durationMins min',
+                          '$score%',
+                          const Color(0xFFFFC107),
+                        );
+
+                        if (index == sessions.take(8).length - 1) {
+                          return row;
+                        }
+
+                        return Column(
+                          children: [
+                            row,
+                            Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              );
+            },
           ),
-          
-          const SizedBox(height: 32),
-          const Text('BY SCRIPT', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-          const SizedBox(height: 16),
-          
-          _buildScriptProgressCard('Hamlet', '91%', '8 sessions · 62% complete', 0.91),
-          const SizedBox(height: 12),
-          _buildScriptProgressCard('Romeo & Juliet', '74%', '4 sessions · 30% complete', 0.74),
-          
-          const SizedBox(height: 32),
-          const Text('RECENT SESSIONS', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-          const SizedBox(height: 16),
-          
-          // Recent Sessions List
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Column(
-              children: [
-                _buildRecentSessionRow('Hamlet - Act II', 'Today · 24 min', '87%', const Color(0xFFFFC107)),
-                Divider(color: Colors.white.withOpacity(0.05), height: 1),
-                _buildRecentSessionRow('Hamlet - Act I', 'Yesterday · 18 min', '93%', Colors.greenAccent),
-                Divider(color: Colors.white.withOpacity(0.05), height: 1),
-                _buildRecentSessionRow('Romeo & Juliet - Act I', 'Mar 17 · 31 min', '74%', const Color(0xFFFFC107)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _buildScriptProgressCard(String title, String percentScore, String sub, double fraction) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              Text(percentScore, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Stack(
-            children: [
-              Container(
-                height: 4,
-                width: double.infinity,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(2)),
-              ),
-              FractionallySizedBox(
-                widthFactor: fraction,
-                child: Container(
-                  height: 4,
-                  decoration: BoxDecoration(color: const Color(0xFFFFC107), borderRadius: BorderRadius.circular(2)),
+  Widget _buildScriptProgressCard(_ScriptProgress row) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(row.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  '${(row.averageAccuracy * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-        ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Stack(
+              children: [
+                Container(
+                  height: 4,
+                  width: double.infinity,
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(2)),
+                ),
+                FractionallySizedBox(
+                  widthFactor: row.averageAccuracy.clamp(0.0, 1.0),
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(color: const Color(0xFFFFC107), borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${row.sessions} session${row.sessions == 1 ? '' : 's'} recorded',
+              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -151,13 +265,19 @@ class ProgressTab extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(sub, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+              ],
+            ),
           ),
           Text(score, style: TextStyle(color: scoreColor, fontWeight: FontWeight.bold, fontSize: 16)),
         ],
@@ -166,47 +286,82 @@ class ProgressTab extends StatelessWidget {
   }
 }
 
-class _SimpleLineChartPainter extends CustomPainter {
+class _ScriptProgress {
+  const _ScriptProgress({
+    required this.title,
+    required this.averageAccuracy,
+    required this.sessions,
+  });
+
+  final String title;
+  final double averageAccuracy;
+  final int sessions;
+}
+
+class _SessionLineChartPainter extends CustomPainter {
+  _SessionLineChartPainter({required this.values});
+
+  final List<double> values;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    if (values.isEmpty) {
+      return;
+    }
+
+    final linePaint = Paint()
       ..color = const Color(0xFFFFC107)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-    
-    // We create realistic looking points scaling to the given size.
-    final points = [
-      Offset(0, size.height * 0.8),
-      Offset(size.width * 0.16, size.height * 0.7),
-      Offset(size.width * 0.33, size.height * 0.6),
-      Offset(size.width * 0.5, size.height * 0.5),
-      Offset(size.width * 0.66, size.height * 0.35),
-      Offset(size.width * 0.83, size.height * 0.25),
-      Offset(size.width, 0),
-    ];
-    
-    final path = Path()..moveTo(points[0].dx, points[0].dy);
+
+    final dotPaint = Paint()
+      ..color = const Color(0xFFFFC107)
+      ..style = PaintingStyle.fill;
+
+    final points = <Offset>[];
+    for (int i = 0; i < values.length; i++) {
+      final x = values.length == 1 ? 0.0 : (i / (values.length - 1)) * size.width;
+      final y = (1 - values[i].clamp(0.0, 1.0)) * size.height;
+      points.add(Offset(x, y));
+    }
+
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
       path.lineTo(points[i].dx, points[i].dy);
     }
-    
-    canvas.drawPath(path, paint);
-    
-    // Draw dots at each node
-    final dotPaint = Paint()..color = const Color(0xFFFFC107)..style = PaintingStyle.fill;
-    for (var point in points) {
-      canvas.drawCircle(point, 4, dotPaint);
+
+    canvas.drawPath(path, linePaint);
+
+    for (final point in points) {
+      canvas.drawCircle(point, 3.5, dotPaint);
     }
-    
-    // Final dot text (87%) above the last point
+
+    final latest = (values.last * 100).toStringAsFixed(0);
     final textPainter = TextPainter(
-      text: const TextSpan(text: '87%', style: TextStyle(color: Color(0xFFFFC107), fontSize: 12, fontWeight: FontWeight.bold)),
+      text: TextSpan(
+        text: '$latest%',
+        style: const TextStyle(color: Color(0xFFFFC107), fontSize: 12, fontWeight: FontWeight.bold),
+      ),
       textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, Offset(points.last.dx - 22, points.last.dy - 18));
+    )..layout();
+
+    final x = (points.last.dx - textPainter.width - 6).clamp(0.0, size.width - textPainter.width);
+    final y = (points.last.dy - textPainter.height - 6).clamp(0.0, size.height - textPainter.height);
+    textPainter.paint(canvas, Offset(x, y));
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SessionLineChartPainter oldDelegate) {
+    if (oldDelegate.values.length != values.length) {
+      return true;
+    }
+
+    for (int i = 0; i < values.length; i++) {
+      if (oldDelegate.values[i] != values[i]) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
