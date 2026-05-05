@@ -25,6 +25,9 @@ class AuthService {
       );
       
       if (cred.user != null) {
+        final fullName = '$firstName $lastName'.trim();
+        await cred.user!.updateDisplayName(fullName);
+
         // Save user profile data to Firestore
         await _firestore.collection('users').doc(cred.user!.uid).set({
           'firstName': firstName,
