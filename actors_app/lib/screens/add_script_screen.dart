@@ -7,9 +7,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../widgets/background_pattern.dart';
 import 'rehearsal_screen.dart';
-import '../services/app_state.dart';
 import '../services/script_service.dart';
-import 'dart:ui';
 
 class AddScriptScreen extends StatefulWidget {
   const AddScriptScreen({super.key});
@@ -110,23 +108,42 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
   }
 
   void _extractCharacters(String text) {
-     // Look for ALL CAPS words followed by a colon. 
-     // Example: "HAMLET:", "MR. SMITH:", "JULIET:"
-     final RegExp characterRegex = RegExp(r'^([A-Z\s\.]+)[\w\s]*:', multiLine: true);
-     
-     final Iterable<RegExpMatch> matches = characterRegex.allMatches(text);
+     if (text.trim().isEmpty) {
+       setState(() {
+         _detectedCharacters = [];
+         _selectedCharacter = null;
+       });
+       return;
+     }
+
      Set<String> characters = {};
+
+     // Format 1: Standard "CHARACTER: dialogue" format
+     // Examples: "HAMLET:", "MR. SMITH:", "JULIET:"
+    // Accept typical capitalized names (e.g. Arjun) and ALL-CAPS variants
+    final standardRegex = RegExp(r"^([A-Za-z][A-Za-z0-9\s.\-']*?):(.+)$", multiLine: true);
+     final standardMatches = standardRegex.allMatches(text);
      
-     for (final match in matches) {
+     for (final match in standardMatches) {
        String charName = match.group(1)?.trim() ?? '';
-       // Only keep realistic names
-       if (charName.length > 1 && charName.length < 30) {
-          characters.add(charName);
+       if (charName.length > 1 && charName.length < 50) {
+         characters.add(charName);
        }
      }
-     
-     // Specific fallback if they just paste standard script formatting without colons (e.g. Character name on its own line)
-     // Finding those securely via regex is harder, so standard "NAME:" is most reliable.
+
+     // Format 2: Screenplay format (CHARACTER on its own line, ALL CAPS)
+     if (characters.isEmpty) {
+       final lines = text.split('\n');
+       for (final line in lines) {
+         final trimmed = line.trim();
+         if (trimmed == trimmed.toUpperCase() && 
+             trimmed.length > 2 && 
+             trimmed.length < 50 &&
+             !trimmed.startsWith('(')) {
+           characters.add(trimmed);
+         }
+       }
+     }
 
      setState(() {
         _detectedCharacters = characters.toList()..sort();
@@ -167,6 +184,7 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: InkWell(
+                          mouseCursor: SystemMouseCursors.click,
                           onTap: () => Navigator.pop(context),
                           borderRadius: BorderRadius.circular(24),
                           child: Container(
@@ -193,42 +211,47 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                   const SizedBox(height: 32),
                   
                   // Import File Box
-                  GestureDetector(
-                    onTap: _isLoading ? null : _pickFile,
-                    child: CustomPaint(
-                      painter: _DashedRectPainter(color: _isLoading ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.3)),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.03),
-                          borderRadius: BorderRadius.circular(16),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: _isLoading ? null : _pickFile,
+                      child: CustomPaint(
+                        painter: _DashedRectPainter(
+                          color: _isLoading ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.3),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_isLoading)
-                              const CircularProgressIndicator(color: Color(0xFFFFC107))
-                            else ...[
-                              const Icon(Icons.folder, color: Color(0xFFFFC107), size: 48),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Import file',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.03),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isLoading)
+                                const CircularProgressIndicator(color: Color(0xFFFFC107))
+                              else ...[
+                                const Icon(Icons.folder, color: Color(0xFFFFC107), size: 48),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Import file',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '.txt · .pdf · .docx supported',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
-                                  fontSize: 12,
+                                const SizedBox(height: 4),
+                                Text(
+                                  '.txt · .pdf · .docx supported',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 12,
+                                  ),
                                 ),
-                              ),
-                            ]
-                          ],
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -329,67 +352,93 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                   const SizedBox(height: 24),
                   
                   // DETECTED CHARACTERS
-                  if (_detectedCharacters.isNotEmpty) ...[
-                    const Text(
-                      'DETECTED CHARACTERS',
-                      style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: _detectedCharacters.map((c) => _buildCharacterPill(c)).toList(),
-                    ),
-                  ],
+                  _detectedCharacters.isNotEmpty
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'DETECTED CHARACTERS',
+                              style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: _detectedCharacters.map((c) => _buildCharacterPill(c)).toList(),
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                   
                   const SizedBox(height: 40),
                   
                   // Continue Button
-                  OutlinedButton(
-                    onPressed: (_selectedCharacter == null || _titleController.text.isEmpty) ? null : () {
-                      bool exists = AppState.uploadedScripts.any((s) => s['title'] == _titleController.text);
-                      if (!exists) {
-                        AppState.uploadedScripts.add({
-                          'title': _titleController.text,
-                          'subtitle': '${_detectedCharacters.length} active roles detected',
-                        });
-                        // Fire and forget save to Firestore
-                        ScriptService.saveScript(
-                           _titleController.text, 
-                           '${_detectedCharacters.length} active roles detected', 
-                           _scriptTextController.text
-                        );
-                      }
-                      
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => RehearsalScreen(
-                            scriptTitle: _titleController.text,
-                            fullText: _scriptTextController.text,
-                            selectedCharacter: _selectedCharacter!,
-                          ),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: OutlinedButton(
+                      onPressed: (_selectedCharacter == null || _titleController.text.isEmpty || _scriptTextController.text.trim().isEmpty)
+                          ? null
+                          : () async {
+                              final navigator = Navigator.of(context);
+                              final messenger = ScaffoldMessenger.of(context);
+
+                              setState(() => _isLoading = true);
+                              try {
+                                final scriptId = await ScriptService.saveScript(
+                                  title: _titleController.text.trim(),
+                                  subtitle: '${_detectedCharacters.length} active roles detected',
+                                  fullText: _scriptTextController.text,
+                                  characters: _detectedCharacters,
+                                );
+
+                                if (!mounted) {
+                                  return;
+                                }
+
+                                await navigator.push(
+                                  MaterialPageRoute(
+                                    builder: (_) => RehearsalScreen(
+                                      scriptId: scriptId,
+                                      scriptTitle: _titleController.text.trim(),
+                                      fullText: _scriptTextController.text,
+                                      selectedCharacter: _selectedCharacter!,
+                                    ),
+                                  ),
+                                );
+                              } catch (e) {
+                                if (mounted) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('Could not save script: $e'),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _isLoading = false);
+                                }
+                              }
+                            },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.white.withOpacity(0.03),
+                        side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.white.withOpacity(0.03),
-                      side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Continue to role selection',
-                          style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(width: 8),
-                         Icon(Icons.arrow_forward, color: Colors.white, size: 16),
-                      ],
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Continue to role selection',
+                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(width: 8),
+                          Icon(Icons.arrow_forward, color: Colors.white, size: 16),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
