@@ -9,9 +9,15 @@ import 'screens/register_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/add_script_screen.dart';
 import 'services/auth_context.dart';
+import 'services/env_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await EnvConfig.init();
+  } catch (e) {
+    print('Warning: Failed to load environment config: $e');
+  }
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

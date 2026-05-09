@@ -14,6 +14,7 @@ class ScriptService {
     required String subtitle,
     required String fullText,
     required List<String> characters,
+    Map<String, dynamic>? formatted,
   }) async {
     final user = _user;
     if (user == null) return null;
@@ -32,6 +33,7 @@ class ScriptService {
         'subtitle': subtitle,
         'fullText': fullText,
         'characters': characters,
+        if (formatted != null) 'formatted': formatted,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return existingDoc.id;
@@ -42,12 +44,13 @@ class ScriptService {
         .doc(user.uid)
         .collection('scripts')
         .add({
-        'title': title,
-        'subtitle': subtitle,
-        'fullText': fullText,
-        'characters': characters,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      'title': title,
+      'subtitle': subtitle,
+      'fullText': fullText,
+      'characters': characters,
+      if (formatted != null) 'formatted': formatted,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
     return created.id;
   }
@@ -172,5 +175,31 @@ class ScriptService {
       ...values,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// Delete a script and optionally its sessions
+  static Future<void> deleteScript(String scriptId, {bool removeSessions = false}) async {
+    final user = _user;
+    if (user == null) return;
+
+    final docRef = _firestore.collection('users').doc(user.uid).collection('scripts').doc(scriptId);
+    await docRef.delete();
+
+    if (removeSessions) {
+      final sessionsColl = _firestore.collection('users').doc(user.uid).collection('sessions');
+      final snaps = await sessionsColl.where('scriptId', isEqualTo: scriptId).get();
+      for (final s in snaps.docs) {
+        await s.reference.delete();
+      }
+    }
+  }
+
+  /// Fetch a single script document once
+  static Future<Map<String, dynamic>?> getScriptOnce(String scriptId) async {
+    final user = _user;
+    if (user == null) return null;
+
+    final doc = await _firestore.collection('users').doc(user.uid).collection('scripts').doc(scriptId).get();
+    return doc.exists ? (doc.data() ?? <String, dynamic>{}) : null;
   }
 }

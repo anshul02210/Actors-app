@@ -7,7 +7,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../widgets/background_pattern.dart';
 import 'rehearsal_screen.dart';
+import 'script_formatting_preview_screen.dart';
 import '../services/script_service.dart';
+import '../services/script_formatter_service.dart';
 
 class AddScriptScreen extends StatefulWidget {
   const AddScriptScreen({super.key});
@@ -21,8 +23,8 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
   final _scriptTextController = TextEditingController();
   
   List<String> _detectedCharacters = [];
-  String? _selectedCharacter;
   bool _isLoading = false;
+  FormattedScript? _formattedScript;
 
   @override
   void dispose() {
@@ -111,7 +113,6 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
      if (text.trim().isEmpty) {
        setState(() {
          _detectedCharacters = [];
-         _selectedCharacter = null;
        });
        return;
      }
@@ -147,19 +148,14 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
 
      setState(() {
         _detectedCharacters = characters.toList()..sort();
-        // Clear selection if the chosen character disappears
-        if (_selectedCharacter != null && !_detectedCharacters.contains(_selectedCharacter)) {
-          _selectedCharacter = null;
-        }
      });
   }
 
   @override
   void initState() {
     super.initState();
-    // Re-detect characters if they manually paste or type into the box!
+    // Re-detect characters as user types (for reference only)
     _scriptTextController.addListener(() {
-      // Debounce this in a real app, but for now we'll do it instantly
       _extractCharacters(_scriptTextController.text);
     });
   }
@@ -357,14 +353,8 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'DETECTED CHARACTERS',
-                              style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: _detectedCharacters.map((c) => _buildCharacterPill(c)).toList(),
+                              'NOTE: Final characters will be detected by AI',
+                              style: TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic),
                             ),
                           ],
                         )
@@ -372,11 +362,11 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                   
                   const SizedBox(height: 40),
                   
-                  // Continue Button
+                  // Format Button - No character selection needed upfront
                   MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: OutlinedButton(
-                      onPressed: (_selectedCharacter == null || _titleController.text.isEmpty || _scriptTextController.text.trim().isEmpty)
+                      onPressed: (_titleController.text.isEmpty || _scriptTextController.text.trim().isEmpty)
                           ? null
                           : () async {
                               final navigator = Navigator.of(context);
@@ -384,32 +374,56 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
 
                               setState(() => _isLoading = true);
                               try {
-                                final scriptId = await ScriptService.saveScript(
-                                  title: _titleController.text.trim(),
-                                  subtitle: '${_detectedCharacters.length} active roles detected',
-                                  fullText: _scriptTextController.text,
-                                  characters: _detectedCharacters,
+                                // Show the formatting preview to let AI detect characters
+                                final result = await navigator.push<Map<String, dynamic>>(
+                                  MaterialPageRoute(
+                                    builder: (_) => ScriptFormattingPreviewScreen(
+                                      rawScriptText: _scriptTextController.text,
+                                      scriptTitle: _titleController.text.trim(),
+                                      onFormatted: (formatted) {
+                                        setState(() => _formattedScript = formatted);
+                                      },
+                                    ),
+                                  ),
                                 );
 
                                 if (!mounted) {
                                   return;
                                 }
 
-                                await navigator.push(
-                                  MaterialPageRoute(
-                                    builder: (_) => RehearsalScreen(
-                                      scriptId: scriptId,
-                                      scriptTitle: _titleController.text.trim(),
-                                      fullText: _scriptTextController.text,
-                                      selectedCharacter: _selectedCharacter!,
+                                // If user confirmed the formatted script and selected a character
+                                if (result != null) {
+                                  final selectedCharacter = result['character'] as String;
+                                  final formattedScript = result['script'] as FormattedScript;
+
+                                  final scriptId = await ScriptService.saveScript(
+                                    title: _titleController.text.trim(),
+                                    subtitle: '${formattedScript.characters.length} active roles detected',
+                                    fullText: _scriptTextController.text,
+                                    characters: formattedScript.characters,
+                                    formatted: formattedScript.toJson(),
+                                  );
+
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  await navigator.push(
+                                    MaterialPageRoute(
+                                      builder: (_) => RehearsalScreen(
+                                        scriptId: scriptId,
+                                        scriptTitle: _titleController.text.trim(),
+                                        fullText: _scriptTextController.text,
+                                        selectedCharacter: selectedCharacter,
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
+                                }
                               } catch (e) {
                                 if (mounted) {
                                   messenger.showSnackBar(
                                     SnackBar(
-                                      content: Text('Could not save script: $e'),
+                                      content: Text('Could not process script: $e'),
                                       backgroundColor: Colors.redAccent,
                                     ),
                                   );
@@ -432,11 +446,11 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Continue to role selection',
+                            'Format & Preview with AI',
                             style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                           ),
                           SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, color: Colors.white, size: 16),
+                          Icon(Icons.auto_awesome, color: Color(0xFFFFC107), size: 16),
                         ],
                       ),
                     ),
@@ -451,34 +465,7 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
     );
   }
 
-  Widget _buildCharacterPill(String name) {
-    final isSelected = _selectedCharacter == name;
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedCharacter = name;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFFFC107) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.5)),
-        ),
-        child: Text(
-          name,
-          style: TextStyle(
-            color: isSelected ? Colors.black : const Color(0xFFFFC107),
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
+  // Character pill builder removed — selection moved to preview screen.
 }
 
 class _DashedRectPainter extends CustomPainter {

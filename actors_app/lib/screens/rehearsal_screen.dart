@@ -19,11 +19,15 @@ class ScriptLine {
   final String dialogue;
   final String? stageDirection; // e.g., "(Sighs)" or "(Abhi walked out after saying it)"
   final String dialogueClean; // dialogue without inline stage directions for TTS
+  final String? emotion;
+  final String? emotionDescription; // AI delivery instruction
 
   ScriptLine({
     required this.character,
     required this.dialogue,
     this.stageDirection,
+    this.emotion,
+    this.emotionDescription,
     String? dialogueClean,
   }) : dialogueClean = dialogueClean ?? 
         dialogue.replaceAll(RegExp(r'\([^)]*\)|\[[^\]]*\]'), '').trim();
@@ -91,8 +95,60 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
   void initState() {
     super.initState();
     _parseScript();
+    if (widget.scriptId != null) {
+      _loadFormattedCues();
+    }
     _loadUserSettings();
     // Plugins will initialize when the user explicitly clicks Start
+  }
+
+  Future<void> _loadFormattedCues() async {
+    try {
+      final doc = await ScriptService.getScriptOnce(widget.scriptId!);
+      if (doc == null) return;
+
+      final formatted = doc['formatted'];
+      if (formatted == null) return;
+
+      final List<dynamic>? formattedLines = (formatted['lines'] as List<dynamic>?) ?? (formatted as Map<String, dynamic>)['lines'] as List<dynamic>?;
+      if (formattedLines == null || formattedLines.isEmpty) return;
+
+      // Best-effort mapping: if counts match map by index, otherwise try string matching
+      setState(() {
+        for (int i = 0; i < _lines.length; i++) {
+          if (i < formattedLines.length) {
+            final f = formattedLines[i] as Map<String, dynamic>;
+            _lines[i] = ScriptLine(
+              character: _lines[i].character,
+              dialogue: _lines[i].dialogue,
+              stageDirection: _lines[i].stageDirection,
+              dialogueClean: _lines[i].dialogueClean,
+              emotion: f['emotion'] as String?,
+              emotionDescription: f['emotionDescription'] as String?,
+            );
+          } else {
+            // Try to match by dialogue substring
+            for (final fRaw in formattedLines) {
+              final f = fRaw as Map<String, dynamic>;
+              final fDialog = (f['dialogue'] as String?) ?? '';
+              if (fDialog.isNotEmpty && _lines[i].dialogue.contains(fDialog)) {
+                _lines[i] = ScriptLine(
+                  character: _lines[i].character,
+                  dialogue: _lines[i].dialogue,
+                  stageDirection: _lines[i].stageDirection,
+                  dialogueClean: _lines[i].dialogueClean,
+                  emotion: f['emotion'] as String?,
+                  emotionDescription: f['emotionDescription'] as String?,
+                );
+                break;
+              }
+            }
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed to load formatted cues: $e');
+    }
   }
 
   Future<void> _loadUserSettings() async {
@@ -781,6 +837,28 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
             
             // Core Display Logic for lines
             // If user is currently in 'userTurn' allow showing their line (configurable)
+            // Show AI-delivery cue if available for active line
+            if (isActiveLine && (line.emotionDescription != null || line.emotion != null))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    if (line.emotion != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        decoration: BoxDecoration(color: _getEmotionColor(line.emotion).withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                        child: Text(line.emotion!.toUpperCase(), style: TextStyle(color: _getEmotionColor(line.emotion), fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        line.emotionDescription ?? '',
+                        style: TextStyle(color: Colors.white70, fontSize: 13, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (isActiveLine && isMyRole && _currentState == RehearsalState.userTurn && _showMyLineDuringTurn)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -894,27 +972,83 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
               Text(widget.scriptTitle, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
-          // Elapsed time display
-          if (_hasStarted)
-            Column(
-              children: [
-                const Text('TIME', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                Text(
-                  _getElapsedTimeString(),
-                  style: TextStyle(
-                    color: _isPaused ? Colors.white54 : const Color(0xFFFFC107),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'monospace',
-                  ),
+          // Elapsed time display + delete action when script exists
+          Row(
+            children: [
+              if (widget.scriptId != null)
+                IconButton(
+                  onPressed: _deleteScriptWithUndo,
+                  icon: const Icon(Icons.delete_outline, color: Colors.white54),
+                  tooltip: 'Delete script',
                 ),
-              ],
-            )
-          else
-            const SizedBox(width: 40), // Spacer balancing
+              if (_hasStarted)
+                Column(
+                  children: [
+                    const Text('TIME', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    Text(
+                      _getElapsedTimeString(),
+                      style: TextStyle(
+                        color: _isPaused ? Colors.white54 : const Color(0xFFFFC107),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                )
+              else
+                const SizedBox(width: 40), // Spacer balancing
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _deleteScriptWithUndo() async {
+    if (widget.scriptId == null) return;
+    final scaffold = ScaffoldMessenger.of(context);
+
+    try {
+      final doc = await ScriptService.getScriptOnce(widget.scriptId!);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF151821),
+          title: const Text('Delete Script', style: TextStyle(color: Colors.white)),
+          content: const Text('Are you sure you want to delete this script? This will remove saved rehearsals as well.', style: TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107)), onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.black))),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      await ScriptService.deleteScript(widget.scriptId!, removeSessions: true);
+
+      scaffold.showSnackBar(SnackBar(
+        content: const Text('Script deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            if (doc != null) {
+              final title = (doc['title'] as String?) ?? widget.scriptTitle;
+              final subtitle = (doc['subtitle'] as String?) ?? '';
+              final fullText = (doc['fullText'] as String?) ?? '';
+              final rawChars = (doc['characters'] as List?)?.cast<String>() ?? <String>[];
+              await ScriptService.saveScript(title: title, subtitle: subtitle, fullText: fullText, characters: rawChars, formatted: doc['formatted'] as Map<String, dynamic>?);
+              scaffold.showSnackBar(const SnackBar(content: Text('Undo: Script restored')));
+            }
+          },
+        ),
+      ));
+
+      Navigator.of(context).pop();
+    } catch (e) {
+      scaffold.showSnackBar(SnackBar(content: Text('Failed to delete script: $e')));
+    }
   }
 
   Widget _buildControlStrip() {
@@ -1080,5 +1214,29 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
         ),
       ),
     );
+  }
+
+  Color _getEmotionColor(String? emotion) {
+    switch (emotion?.toLowerCase()) {
+      case 'angry':
+      case 'anger':
+        return Colors.redAccent;
+      case 'joy':
+      case 'happy':
+      case 'joyful':
+        return Colors.amber;
+      case 'sad':
+      case 'sadness':
+        return Colors.blueGrey;
+      case 'fear':
+        return Colors.deepPurpleAccent;
+      case 'confused':
+      case 'confusion':
+        return Colors.orangeAccent;
+      case 'love':
+        return Colors.pinkAccent;
+      default:
+        return Colors.white54;
+    }
   }
 }

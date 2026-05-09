@@ -270,7 +270,40 @@ final RegExp characterRegex = RegExp(
                                       ],
                                     ),
                                   ),
-                                  const Icon(Icons.play_arrow_rounded, color: Color(0xFFFFC107)),
+                                  // Actions: Play and menu
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.play_arrow_rounded, color: Color(0xFFFFC107)),
+                                      const SizedBox(width: 8),
+                                      PopupMenuButton<String>(
+                                        color: const Color(0xFF151821),
+                                        onSelected: (value) async {
+                                          if (value == 'delete') {
+                                            final confirm = await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                backgroundColor: const Color(0xFF151821),
+                                                title: const Text('Delete Script', style: TextStyle(color: Colors.white)),
+                                                content: const Text('Delete this script and its sessions? This cannot be undone.', style: TextStyle(color: Colors.white70)),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+                                                  ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107)), onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.black))),
+                                                ],
+                                              ),
+                                            );
+
+                                            if (confirm == true) {
+                                              await ScriptService.deleteScript(doc.id, removeSessions: true);
+                                            }
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
+                                          const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.white))),
+                                        ],
+                                        child: const Icon(Icons.more_vert, color: Colors.white54),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
