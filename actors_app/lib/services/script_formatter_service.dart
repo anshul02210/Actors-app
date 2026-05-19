@@ -89,6 +89,7 @@ class FormattedScript {
 /// Service for formatting scripts using OpenAI API
 class ScriptFormatterService {
   static const String _apiUrl = 'https://api.openai.com/v1/chat/completions';
+  static const int maxEstimatedPromptTokens = 100000;
   final String _apiKey;
 
   ScriptFormatterService({required String apiKey}) : _apiKey = apiKey;
@@ -99,6 +100,11 @@ class ScriptFormatterService {
     required String scriptTitle,
   }) async {
     try {
+      validateScriptSize(
+        rawScriptText: rawScriptText,
+        scriptTitle: scriptTitle,
+      );
+
       final prompt = _buildFormattingPrompt(rawScriptText, scriptTitle);
 
       final response = await http.post(
@@ -145,6 +151,33 @@ Be thorough in extracting emotional cues and provide specific, actionable delive
       return FormattedScript.fromJson(jsonDecode(jsonContent));
     } catch (e) {
       throw Exception('Failed to format script: $e');
+    }
+  }
+
+  /// Estimates whether a script fits within the formatting request budget.
+  static int estimatePromptTokens({
+    required String rawScriptText,
+    required String scriptTitle,
+  }) {
+    final prompt = _buildFormattingPrompt(rawScriptText, scriptTitle);
+    return (prompt.length / 4).ceil();
+  }
+
+  /// Throws a clear error before we send an oversized request to the API.
+  static void validateScriptSize({
+    required String rawScriptText,
+    required String scriptTitle,
+  }) {
+    final estimatedTokens = estimatePromptTokens(
+      rawScriptText: rawScriptText,
+      scriptTitle: scriptTitle,
+    );
+
+    if (estimatedTokens > maxEstimatedPromptTokens) {
+      throw ScriptTooLargeException(
+        estimatedTokens: estimatedTokens,
+        maxTokens: maxEstimatedPromptTokens,
+      );
     }
   }
 
@@ -212,7 +245,7 @@ Respond ONLY with valid JSON: {"emotion": "...", "instruction": "..."}'''
   }
 
   /// Builds the prompt for script formatting
-  String _buildFormattingPrompt(String rawScript, String title) {
+  static String _buildFormattingPrompt(String rawScript, String title) {
     return '''Please format and analyze this script text.
 
 Script Title: "$title"
@@ -248,4 +281,20 @@ Please:
 
 Be thorough and creative with emotional descriptions to help actors deliver authentic performances.''';
   }
+}
+
+class ScriptTooLargeException implements Exception {
+  final int estimatedTokens;
+  final int maxTokens;
+
+  ScriptTooLargeException({
+    required this.estimatedTokens,
+    required this.maxTokens,
+  });
+
+  String get message =>
+      'This script is too large to format in one AI request. Estimated size: $estimatedTokens tokens. Limit: $maxTokens tokens. Split the script into smaller sections and try again.';
+
+  @override
+  String toString() => message;
 }

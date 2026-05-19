@@ -6,6 +6,7 @@ import '../widgets/background_pattern.dart';
 import 'dart:math';
 import 'dart:async';
 import '../services/script_service.dart';
+import '../services/script_formatter_service.dart';
 
 enum RehearsalState {
   aiSpeaking,
@@ -45,6 +46,8 @@ class RehearsalScreen extends StatefulWidget {
   final String scriptTitle;
   final String fullText;
   final String selectedCharacter;
+  final FormattedScript? formattedScript;
+  final bool autoStart;
 
   const RehearsalScreen({
     super.key,
@@ -52,6 +55,8 @@ class RehearsalScreen extends StatefulWidget {
     required this.scriptTitle,
     required this.fullText,
     required this.selectedCharacter,
+    this.formattedScript,
+    this.autoStart = false,
   });
 
   @override
@@ -86,6 +91,8 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
   String _liveSpokenText = '';
   bool _isPaused = false;
   bool _hasStarted = false;
+  bool _scriptDataReady = false;
+  bool _settingsReady = false;
   DateTime? _sessionStartedAt;
   DateTime? _pauseStartedAt;
   Duration _totalPausedTime = Duration.zero;
@@ -94,60 +101,78 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
   @override
   void initState() {
     super.initState();
-    _parseScript();
-    if (widget.scriptId != null) {
-      _loadFormattedCues();
-    }
+    _initializeScriptData();
     _loadUserSettings();
     // Plugins will initialize when the user explicitly clicks Start
   }
 
-  Future<void> _loadFormattedCues() async {
-    try {
-      final doc = await ScriptService.getScriptOnce(widget.scriptId!);
-      if (doc == null) return;
+  void _tryAutoStart() {
+    if (!widget.autoStart || _hasStarted || !_scriptDataReady || !_settingsReady || _lines.isEmpty) {
+      return;
+    }
 
-      final formatted = doc['formatted'];
-      if (formatted == null) return;
+    setState(() => _hasStarted = true);
+    _sessionStartedAt = DateTime.now();
+    _initPlugins();
+  }
 
-      final List<dynamic>? formattedLines = (formatted['lines'] as List<dynamic>?) ?? (formatted as Map<String, dynamic>)['lines'] as List<dynamic>?;
-      if (formattedLines == null || formattedLines.isEmpty) return;
+  List<ScriptLine> _buildScriptLinesFromFormatted(FormattedScript formatted) {
+    return formatted.lines
+        .map(
+          (line) => ScriptLine(
+            character: line.character.trim(),
+            dialogue: line.dialogue.trim(),
+            stageDirection: line.stageDirection,
+            emotion: line.emotion,
+            emotionDescription: line.emotionDescription,
+          ),
+        )
+        .toList();
+  }
 
-      // Best-effort mapping: if counts match map by index, otherwise try string matching
+  bool _charactersMatch(String left, String right) {
+    final normalizedLeft = left.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final normalizedRight = right.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return normalizedLeft == normalizedRight;
+  }
+
+  Future<void> _initializeScriptData() async {
+    if (widget.formattedScript != null) {
+      if (!mounted) return;
       setState(() {
-        for (int i = 0; i < _lines.length; i++) {
-          if (i < formattedLines.length) {
-            final f = formattedLines[i] as Map<String, dynamic>;
-            _lines[i] = ScriptLine(
-              character: _lines[i].character,
-              dialogue: _lines[i].dialogue,
-              stageDirection: _lines[i].stageDirection,
-              dialogueClean: _lines[i].dialogueClean,
-              emotion: f['emotion'] as String?,
-              emotionDescription: f['emotionDescription'] as String?,
-            );
-          } else {
-            // Try to match by dialogue substring
-            for (final fRaw in formattedLines) {
-              final f = fRaw as Map<String, dynamic>;
-              final fDialog = (f['dialogue'] as String?) ?? '';
-              if (fDialog.isNotEmpty && _lines[i].dialogue.contains(fDialog)) {
-                _lines[i] = ScriptLine(
-                  character: _lines[i].character,
-                  dialogue: _lines[i].dialogue,
-                  stageDirection: _lines[i].stageDirection,
-                  dialogueClean: _lines[i].dialogueClean,
-                  emotion: f['emotion'] as String?,
-                  emotionDescription: f['emotionDescription'] as String?,
-                );
-                break;
-              }
-            }
+        _lines = _buildScriptLinesFromFormatted(widget.formattedScript!);
+      });
+      _scriptDataReady = true;
+      _tryAutoStart();
+      return;
+    }
+
+    try {
+      if (widget.scriptId != null) {
+        final doc = await ScriptService.getScriptOnce(widget.scriptId!);
+        if (doc != null) {
+          final formatted = doc['formatted'];
+          if (formatted is Map<String, dynamic> && formatted['lines'] is List) {
+            final loadedFormatted = FormattedScript.fromJson(formatted);
+            if (!mounted) return;
+            setState(() {
+              _lines = _buildScriptLinesFromFormatted(loadedFormatted);
+            });
+            _scriptDataReady = true;
+            _tryAutoStart();
+            return;
           }
         }
-      });
+      }
+
+      _parseScript();
+      _scriptDataReady = true;
+      _tryAutoStart();
     } catch (e) {
-      debugPrint('Failed to load formatted cues: $e');
+      debugPrint('Failed to initialize script data: $e');
+      _parseScript();
+      _scriptDataReady = true;
+      _tryAutoStart();
     }
   }
 
@@ -164,6 +189,8 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
       _isChallengeMode = challengeMode is bool ? challengeMode : false;
       _ttsSpeed = ttsSpeed is num ? ttsSpeed.toDouble() : 1.0;
     });
+    _settingsReady = true;
+    _tryAutoStart();
   }
 
   Future<void> _initPlugins() async {
@@ -290,7 +317,7 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
       _liveSpokenText = ''; // Clear live mic buffer
     });
 
-    if (currentLine.character != widget.selectedCharacter) {
+    if (!_charactersMatch(currentLine.character, widget.selectedCharacter)) {
       // STATE A: AI SPEAKING
       setState(() {
         _currentState = RehearsalState.aiSpeaking;
@@ -549,7 +576,7 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
 
     for (final line in _lines) {
       characterCounts.update(line.character, (v) => v + 1, ifAbsent: () => 1);
-      if (line.character == widget.selectedCharacter) {
+      if (_charactersMatch(line.character, widget.selectedCharacter)) {
         myLineCount++;
       }
     }
@@ -615,7 +642,7 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
           ),
           const SizedBox(height: 12),
           ...characterCounts.entries.map((entry) {
-            final isYourRole = entry.key == widget.selectedCharacter;
+            final isYourRole = _charactersMatch(entry.key, widget.selectedCharacter);
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -705,7 +732,7 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: _lines.map((line) {
-                              final isYourLine = line.character == widget.selectedCharacter;
+                              final isYourLine = _charactersMatch(line.character, widget.selectedCharacter);
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 16),
                                 child: Column(
@@ -775,7 +802,7 @@ class _RehearsalScreenState extends State<RehearsalScreen> {
   }
 
   Widget _buildDialogueBlock(ScriptLine line, int index) {
-    bool isMyRole = line.character == widget.selectedCharacter;
+    bool isMyRole = _charactersMatch(line.character, widget.selectedCharacter);
     bool isActiveLine = index == _currentLineIndex;
     
     return Opacity(

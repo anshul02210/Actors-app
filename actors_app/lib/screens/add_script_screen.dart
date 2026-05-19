@@ -415,6 +415,8 @@ class _AddScriptScreenState extends State<AddScriptScreen> {
                                         scriptTitle: _titleController.text.trim(),
                                         fullText: _scriptTextController.text,
                                         selectedCharacter: selectedCharacter,
+                                        formattedScript: formattedScript,
+                                        autoStart: true,
                                       ),
                                     ),
                                   );

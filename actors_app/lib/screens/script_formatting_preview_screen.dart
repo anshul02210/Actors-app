@@ -26,6 +26,7 @@ class _ScriptFormattingPreviewScreenState
   FormattedScript? _formattedScript;
   String? _error;
   bool _isLoading = true;
+  bool _isWarning = false;
   String? _selectedCharacter;
 
   @override
@@ -55,17 +56,31 @@ class _ScriptFormattingPreviewScreenState
   Future<void> _formatScript() async {
     try {
       setState(() => _isLoading = true);
+
+      ScriptFormatterService.validateScriptSize(
+        rawScriptText: widget.rawScriptText,
+        scriptTitle: widget.scriptTitle,
+      );
+
       final formatted = await _formatterService.formatScript(
         rawScriptText: widget.rawScriptText,
         scriptTitle: widget.scriptTitle,
       );
       setState(() {
         _formattedScript = formatted;
+        _isWarning = false;
+        _isLoading = false;
+      });
+    } on ScriptTooLargeException catch (e) {
+      setState(() {
+        _error = e.message;
+        _isWarning = true;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _error = 'Error formatting script: $e';
+        _isWarning = false;
         _isLoading = false;
       });
     }
@@ -104,21 +119,24 @@ class _ScriptFormattingPreviewScreenState
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline,
-                        color: Colors.red, size: 48),
+                    Icon(
+                      _isWarning ? Icons.warning_amber_rounded : Icons.error_outline,
+                      color: _isWarning ? Colors.amber : Colors.red,
+                      size: 48,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       _error!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.red,
+                      style: TextStyle(
+                        color: _isWarning ? Colors.amber : Colors.red,
                         fontSize: 16,
                       ),
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _formatScript,
-                      child: const Text('Retry'),
+                      onPressed: _isWarning ? () => Navigator.pop(context) : _formatScript,
+                      child: Text(_isWarning ? 'Back' : 'Retry'),
                     )
                   ],
                 ),
